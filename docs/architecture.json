@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Bandeja de Agenda — Arquitectura",
+    "output": "architecture.html",
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "flujo-principal", "label": "Flujo principal", "focus": ["usuario", "artifact", "cola", "gcal"], "note": "Cargar a mano, guardar en la cola y enviar a Google Calendar." },
+      { "id": "importar-documento", "label": "Importar documento", "focus": ["documento", "extractor", "claude", "artifact"], "note": "PDF/Word se lee en el navegador y Claude detecta las fechas de participación." }
+    ]
+  },
+  "components": [
+    { "id": "usuario", "type": "external", "label": "Usuario", "sublabel": "Estudiante / docente", "pos": [40, 224], "size": [140, 60] },
+    { "id": "artifact", "type": "frontend", "label": "Bandeja de Agenda", "sublabel": "Claude Artifact (HTML/JS)", "pos": [320, 215], "size": [210, 78], "tag": "en tu navegador" },
+    { "id": "gcal", "type": "external", "label": "Google Calendar", "sublabel": "conector mcp", "pos": [680, 215], "size": [170, 78] },
+    { "id": "cola", "type": "database", "label": "Cola local", "sublabel": "localStorage", "pos": [345, 80], "size": [150, 60] },
+    { "id": "documento", "type": "external", "label": "PDF o Word", "sublabel": "Mesa CERP / cronograma UTEC", "pos": [40, 350], "size": [160, 60] },
+    { "id": "extractor", "type": "frontend", "label": "pdf.js / mammoth", "sublabel": "Extrae texto plano", "pos": [290, 350], "size": [180, 60], "tag": "en tu navegador" },
+    { "id": "claude", "type": "cloud", "label": "Claude", "sublabel": "capacidad sample", "brand": "claude", "pos": [590, 350], "size": [160, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Se ejecuta en tu navegador", "wraps": ["artifact", "cola", "extractor"] }
+  ],
+  "connections": [
+    { "id": "usuario-artifact", "from": "usuario", "to": "artifact", "label": "Carga tareas, eventos y recordatorios", "variant": "emphasis", "labelAt": [250, 305] },
+    { "id": "artifact-cola", "from": "artifact", "to": "cola", "label": "Guarda borradores", "fromSide": "top", "toSide": "bottom" },
+    { "id": "artifact-gcal", "from": "artifact", "to": "gcal", "label": "mcp: create_event, list_calendars, list_events, delete_event", "variant": "emphasis", "labelAt": [605, 305] },
+    { "id": "documento-extractor", "from": "documento", "to": "extractor", "label": "Sube el archivo" },
+    { "id": "extractor-claude", "from": "extractor", "to": "claude", "label": "Texto extraído" },
+    { "id": "claude-artifact", "from": "claude", "to": "artifact", "label": "sample: fechas candidatas (JSON)", "fromSide": "top", "toSide": "bottom", "labelAt": [700, 335] }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "En el navegador", "items": ["Artifact, cola y extracción de archivos corren en el cliente", "Nada se sube a un servidor propio"] },
+    { "dot": "emerald", "title": "Flujo principal", "items": ["Cargás a mano y se guarda en la cola", "El conector mcp sincroniza con Google Calendar"] },
+    { "dot": "violet", "title": "Importar documento", "items": ["pdf.js / mammoth extraen el texto del PDF o Word", "Claude devuelve las fechas candidatas para revisar"] }
+  ]
+}

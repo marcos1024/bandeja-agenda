@@ -1,2 +1,5 @@
 .DS_Store
 Thumbs.db
+
+# archify verification evidence — not part of the deliverable
+docs/architecture.visual-check.*

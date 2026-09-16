@@ -18,6 +18,12 @@ Este repo existe para:
 - Que cualquiera pueda leerlo, proponer cambios o adaptarlo.
 - Servir de base para volver a publicarlo como Artifact (propio o de otra persona) copiando el contenido de `index.html`.
 
+## Arquitectura
+
+![Diagrama de arquitectura de Bandeja de Agenda](docs/architecture-preview.png)
+
+Versión interactiva (pan/zoom, capas, vistas guiadas): [`docs/architecture.html`](docs/architecture.html) — descargala y abrila en el navegador.
+
 ## Cómo funciona (por dentro)
 
 ```
