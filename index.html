@@ -1,0 +1,1096 @@
+<title>Bandeja de Agenda</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.12.3/mammoth.browser.min.js" defer></script>
+<style>
+  :root {
+    --bg: #f0f2ec;
+    --surface: #ffffff;
+    --surface-2: #e6e9df;
+    --ink: #172119;
+    --ink-muted: #566058;
+    --line: #d9ddd0;
+    --accent: #2b6f5c;
+    --accent-ink: #ffffff;
+    --type-evento: #2b6f5c;
+    --type-tarea: #a8761f;
+    --type-recordatorio: #6d4fa0;
+    --danger: #a8402f;
+    --shadow: rgba(23, 33, 25, 0.09);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101512;
+      --surface: #1a2220;
+      --surface-2: #202a26;
+      --ink: #eaf0ea;
+      --ink-muted: #97a69c;
+      --line: #2b3733;
+      --accent: #5cb89c;
+      --accent-ink: #08120f;
+      --type-evento: #5cb89c;
+      --type-tarea: #d9a34e;
+      --type-recordatorio: #b39ce0;
+      --danger: #e08877;
+      --shadow: rgba(0, 0, 0, 0.45);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101512;
+    --surface: #1a2220;
+    --surface-2: #202a26;
+    --ink: #eaf0ea;
+    --ink-muted: #97a69c;
+    --line: #2b3733;
+    --accent: #5cb89c;
+    --accent-ink: #08120f;
+    --type-evento: #5cb89c;
+    --type-tarea: #d9a34e;
+    --type-recordatorio: #b39ce0;
+    --danger: #e08877;
+    --shadow: rgba(0, 0, 0, 0.45);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    padding-inline: 20px;
+    padding-block: 28px 60px;
+  }
+  h1, h2, h3 { font-family: "Fraunces", Georgia, serif; text-wrap: balance; margin: 0; }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  button { font-family: inherit; }
+
+  .wrap { max-width: 1180px; margin-inline: auto; }
+
+  header.top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+  header.top .titles h1 { font-size: 1.9rem; font-weight: 600; }
+  header.top .titles p { margin: 6px 0 0; color: var(--ink-muted); font-size: 0.92rem; max-width: 46ch; }
+  .status-cluster { display: flex; align-items: center; gap: 12px; }
+  .clock {
+    text-align: right;
+    font-size: 0.78rem;
+    color: var(--ink-muted);
+    line-height: 1.35;
+  }
+  .clock .time { font-size: 1.05rem; color: var(--ink); }
+  .conn-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px; border-radius: 999px;
+    font-size: 0.76rem; letter-spacing: 0.02em; font-weight: 500;
+    border: 1px solid var(--line); background: var(--surface);
+    white-space: nowrap;
+  }
+  .conn-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-muted); flex: none; }
+  .conn-pill.ok .dot { background: var(--accent); }
+  .conn-pill.bad .dot { background: var(--danger); }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 340px 1fr 300px;
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 1px 2px var(--shadow);
+    padding: 18px;
+  }
+  .panel h2 { font-size: 1.02rem; font-weight: 600; margin-bottom: 4px; }
+  .panel .sub { color: var(--ink-muted); font-size: 0.8rem; margin: 0 0 14px; }
+
+  /* --- composer --- */
+  .type-toggle { display: flex; gap: 6px; margin-bottom: 14px; }
+  .type-toggle button {
+    flex: 1; padding: 9px 6px; border-radius: 9px; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--ink-muted); font-size: 0.8rem; font-weight: 500;
+    cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .type-toggle button[data-active="true"] { color: var(--accent-ink); border-color: transparent; }
+  .type-toggle button[data-type="evento"][data-active="true"] { background: var(--type-evento); }
+  .type-toggle button[data-type="tarea"][data-active="true"] { background: var(--type-tarea); }
+  .type-toggle button[data-type="recordatorio"][data-active="true"] { background: var(--type-recordatorio); }
+  .type-hint { font-size: 0.75rem; color: var(--ink-muted); margin: -8px 0 14px; }
+
+  .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+  .field label { font-size: 0.76rem; color: var(--ink-muted); font-weight: 500; letter-spacing: 0.01em; }
+  .field input, .field select, .field textarea {
+    font: inherit; font-size: 0.88rem;
+    padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); width: 100%;
+  }
+  .field textarea { resize: vertical; min-height: 54px; }
+  .field input:focus, .field select:focus, .field textarea:focus {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .primary-btn {
+    width: 100%; padding: 10px; border-radius: 9px; border: none;
+    background: var(--ink); color: var(--bg); font-weight: 600; font-size: 0.88rem;
+    cursor: pointer; margin-top: 4px;
+  }
+  .primary-btn:hover { opacity: 0.9; }
+
+  /* --- queue --- */
+  .queue-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+  .queue-head h2 { font-size: 1.02rem; font-weight: 600; }
+  .queue-count { color: var(--ink-muted); font-size: 0.78rem; }
+  .queue-list { display: flex; flex-direction: column; }
+  .item {
+    display: flex; gap: 12px; padding: 13px 4px; border-bottom: 1px solid var(--line);
+    border-left: 3px solid var(--type-evento);
+    padding-left: 12px;
+  }
+  .item:last-child { border-bottom: none; }
+  .item[data-type="tarea"] { border-left-color: var(--type-tarea); }
+  .item[data-type="recordatorio"] { border-left-color: var(--type-recordatorio); }
+  .item .when { flex: none; width: 92px; font-size: 0.78rem; color: var(--ink-muted); padding-top: 2px; }
+  .item .when .date { font-weight: 500; color: var(--ink); }
+  .item .body { flex: 1; min-width: 0; }
+  .item .line1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .item .title { font-weight: 600; font-size: 0.93rem; }
+  .chip {
+    font-size: 0.68rem; padding: 2px 7px; border-radius: 999px; font-weight: 500;
+    background: var(--surface-2); color: var(--ink-muted); white-space: nowrap;
+  }
+  .item .desc { font-size: 0.8rem; color: var(--ink-muted); margin-top: 3px; }
+  .item .meta { font-size: 0.72rem; color: var(--ink-muted); margin-top: 5px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .item .meta a { color: var(--accent); }
+  .item .actions { flex: none; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+  .btn-sm {
+    font-size: 0.76rem; padding: 6px 10px; border-radius: 7px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--ink); cursor: pointer; white-space: nowrap;
+  }
+  .btn-sm.send { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+  .btn-sm.danger { color: var(--danger); }
+  .btn-sm:disabled { opacity: 0.5; cursor: default; }
+  .state-note { font-size: 0.72rem; margin-top: 4px; }
+  .state-note.synced { color: var(--accent); }
+  .state-note.error { color: var(--danger); }
+  .empty { color: var(--ink-muted); font-size: 0.86rem; padding: 20px 4px; text-align: center; }
+
+  /* --- upcoming --- */
+  .upc-item { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .upc-item:last-child { border-bottom: none; }
+  .upc-item .t { font-size: 0.78rem; color: var(--ink-muted); }
+  .upc-item .s { font-size: 0.87rem; font-weight: 500; margin-top: 2px; }
+  .upc-note { font-size: 0.78rem; color: var(--ink-muted); }
+  .refresh-link { background: none; border: none; color: var(--accent); font-size: 0.76rem; cursor: pointer; padding: 0; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .item, .panel { transition: background 0.15s; }
+  }
+
+  /* --- import panel --- */
+  .import-panel { margin-bottom: 20px; }
+  .import-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .file-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 9px 14px; border-radius: 9px; border: 1px dashed var(--line);
+    background: var(--surface-2); color: var(--ink); font-size: 0.85rem; font-weight: 500;
+    cursor: pointer;
+  }
+  .file-btn input { display: none; }
+  .file-name { font-size: 0.82rem; color: var(--ink-muted); }
+  .analyze-btn {
+    padding: 9px 16px; border-radius: 9px; border: none;
+    background: var(--ink); color: var(--bg); font-weight: 600; font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .analyze-btn:disabled { opacity: 0.45; cursor: default; }
+  .import-status { font-size: 0.82rem; color: var(--ink-muted); margin: 10px 0 0; min-height: 1.2em; }
+  .import-status.error { color: var(--danger); }
+  .import-results { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .import-actions-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
+  .import-actions-top .refresh-link { font-weight: 500; }
+  .candidate {
+    display: grid;
+    grid-template-columns: 128px 1.4fr 96px 96px 1fr auto auto;
+    gap: 8px; align-items: center;
+    padding: 8px 6px; border-radius: 8px; background: var(--surface-2);
+  }
+  .candidate input { font: inherit; font-size: 0.82rem; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; }
+  @media (max-width: 900px) {
+    .candidate { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="titles">
+      <h1>Bandeja de Agenda</h1>
+      <p>Cargá tareas, eventos y recordatorios en la cola y enviálos a Google Calendar cuando quieras.</p>
+    </div>
+    <div class="status-cluster">
+      <div class="clock">
+        <div>Montevideo</div>
+        <div class="time mono" id="clockTime">--:--</div>
+      </div>
+      <span class="conn-pill" id="connPill"><span class="dot"></span><span id="connLabel">Conectando…</span></span>
+    </div>
+  </header>
+
+  <section class="panel import-panel" aria-labelledby="importH">
+    <h2 id="importH">Importar fechas de un PDF o Word</h2>
+    <p class="sub">Subí una convocatoria a mesa de examen del CERP, un cronograma de la UTEC, o cualquier PDF/.docx con fechas. El documento se lee en tu navegador; solo el texto extraído se envía a Claude para detectar las fechas.</p>
+    <div class="import-row">
+      <label class="file-btn" for="fileInput">
+        📎 <span id="fileBtnLabel">Elegir archivo (.pdf, .docx)</span>
+        <input type="file" id="fileInput" accept=".pdf,.docx,.doc">
+      </label>
+      <button type="button" class="analyze-btn" id="analyzeBtn" disabled>Analizar documento</button>
+    </div>
+    <p class="import-status" id="importStatus"></p>
+    <div class="import-results" id="importResults"></div>
+  </section>
+
+  <div class="layout">
+    <!-- composer -->
+    <section class="panel" aria-labelledby="composerH">
+      <h2 id="composerH">Nueva entrada</h2>
+      <p class="sub">Se agrega a la cola. Nada se sube hasta que apretás "Enviar".</p>
+
+      <div class="type-toggle" role="group" aria-label="Tipo de entrada">
+        <button type="button" data-type="evento" data-active="true">Evento</button>
+        <button type="button" data-type="tarea" data-active="false">Tarea</button>
+        <button type="button" data-type="recordatorio" data-active="false">Recordatorio</button>
+      </div>
+      <p class="type-hint" id="typeHint">Bloquea un horario en el calendario elegido.</p>
+
+      <form id="composerForm">
+        <div class="field">
+          <label for="fTitle">Título</label>
+          <input id="fTitle" type="text" placeholder="Ej: Reunión Liceo San Antonio" required>
+        </div>
+        <div class="field">
+          <label for="fDate">Fecha</label>
+          <input id="fDate" type="date" required>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="fStart">Hora inicio</label>
+            <input id="fStart" type="time" required>
+          </div>
+          <div class="field">
+            <label for="fEnd">Hora fin</label>
+            <input id="fEnd" type="time" required>
+          </div>
+        </div>
+        <div class="field">
+          <label for="fCalendar">Calendario</label>
+          <select id="fCalendar">
+            <option value="">Cargando calendarios…</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="fReminder">Aviso previo (minutos, opcional)</label>
+          <input id="fReminder" type="number" min="0" step="5" placeholder="Usar el del calendario">
+        </div>
+        <div class="field">
+          <label for="fDesc">Descripción (opcional)</label>
+          <textarea id="fDesc" placeholder="Detalles, links, notas…"></textarea>
+        </div>
+        <button type="submit" class="primary-btn">Agregar a la cola</button>
+      </form>
+    </section>
+
+    <!-- queue -->
+    <section class="panel" aria-labelledby="queueH">
+      <div class="queue-head">
+        <h2 id="queueH">Cola</h2>
+        <span class="queue-count" id="queueCount">0 entradas</span>
+      </div>
+      <div class="queue-list" id="queueList"></div>
+    </section>
+
+    <!-- upcoming -->
+    <section class="panel" aria-labelledby="upcH">
+      <h2 id="upcH">Próximos en Calendar</h2>
+      <p class="sub">Calendario principal. <button class="refresh-link" id="refreshUpcoming" type="button">Actualizar calendarios</button></p>
+      <div id="upcomingList"><p class="upc-note">Cargando…</p></div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var STORAGE_KEY = "bandeja-agenda:queue:v1";
+  var TIME_ZONE = "America/Montevideo";
+  var SERVER = "Google Calendar";
+
+  var DEFAULT_DURATION_MIN = { evento: 60, tarea: 30, recordatorio: 10 };
+  var DEFAULT_REMINDER_MIN = { evento: null, tarea: 60, recordatorio: 0 };
+  var TYPE_HINT = {
+    evento: "Bloquea un horario en el calendario elegido.",
+    tarea: "Pensalo como un bloque corto con aviso antes de la hora límite.",
+    recordatorio: "Se crea como un evento breve con un aviso a la hora que definas."
+  };
+  var TYPE_LABEL = { evento: "Evento", tarea: "Tarea", recordatorio: "Recordatorio" };
+
+  var state = {
+    type: "evento",
+    calendars: [],
+    calendarsLoaded: false,
+    queue: loadQueue()
+  };
+
+  var mcp = null;
+  var sample = null;
+  var selectedFile = null;
+  var candidates = [];
+  var MAX_DOC_CHARS = 45000;
+
+  // ---------- utilities ----------
+
+  function pad(n) { return n < 10 ? "0" + n : "" + n; }
+
+  function nowInMontevideo() {
+    var parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hour12: false
+    }).formatToParts(new Date());
+    var m = {};
+    parts.forEach(function (p) { m[p.type] = p.value; });
+    return m;
+  }
+
+  function todayDateValue() {
+    var m = nowInMontevideo();
+    return m.year + "-" + m.month + "-" + m.day;
+  }
+
+  function addMinutesToTime(hhmm, minutes) {
+    var bits = hhmm.split(":");
+    var total = parseInt(bits[0], 10) * 60 + parseInt(bits[1], 10) + minutes;
+    total = ((total % 1440) + 1440) % 1440;
+    return pad(Math.floor(total / 60)) + ":" + pad(total % 60);
+  }
+
+  function formatDateLabel(dateStr) {
+    var d = new Date(dateStr + "T12:00:00");
+    return new Intl.DateTimeFormat("es-UY", { weekday: "short", day: "numeric", month: "short" }).format(d);
+  }
+
+  function loadQueue() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return [
+      {
+        id: "ex1", isExample: true, type: "tarea",
+        title: "Entregar planificación 2° año", date: todayDateValue(),
+        startTime: "18:00", endTime: "18:30", calendarId: "", calendarLabel: "Calendario principal",
+        description: "Ejemplo — editá o quitá esta entrada.", reminderMinutes: 60, status: "draft"
+      },
+      {
+        id: "ex2", isExample: true, type: "evento",
+        title: "Reunión Liceo San Antonio", date: todayDateValue(),
+        startTime: "10:00", endTime: "11:00", calendarId: "", calendarLabel: "Calendario principal",
+        description: "Ejemplo — editá o quitá esta entrada.", reminderMinutes: null, status: "draft"
+      }
+    ];
+  }
+
+  function persistQueue() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.queue)); } catch (e) {}
+  }
+
+  function mcpErrorInfo(err) {
+    var code = err && err.code;
+    switch (code) {
+      case "needs_reauth":
+        return { msg: "Reconectá Google Calendar en Ajustes de Claude → Conectores.", retryable: false };
+      case "server_not_connected":
+        return { msg: "Conectá Google Calendar en Ajustes de Claude → Conectores.", retryable: false };
+      case "selection_required":
+        return { msg: "Elegí qué cuenta de Google Calendar usar y volvé a intentar.", retryable: false };
+      case "not_in_manifest":
+        return { msg: "Esta página no tiene permiso para esa acción.", retryable: false };
+      case "blocked_by_policy":
+        return { msg: "Tu organización bloquea esta acción sobre Google Calendar.", retryable: false };
+      case "approval_required":
+        return { msg: "Esta acción necesita aprobación previa de tu organización.", retryable: false };
+      case "consent_required":
+        return { msg: "Autorizá el acceso a Google Calendar cuando te lo pida Claude y volvé a intentar.", retryable: false };
+      case "bad_request":
+        return { msg: "Datos inválidos, revisá el formulario.", retryable: false };
+      case "cancelled":
+        return { msg: "Se canceló la solicitud.", retryable: false };
+      case "tool_error":
+        return { msg: "Google Calendar rechazó la solicitud" + (err.message ? ": " + err.message : "."), retryable: false };
+      case "server_unavailable":
+      case "upstream_error":
+      case "rate_limited":
+        return { msg: "Google Calendar no respondió. Probá de nuevo en un momento.", retryable: !!err.retryable };
+      case "not_granted":
+      case "capability_disabled":
+      case "capability_removed":
+        return { msg: "Esta vista no tiene habilitada la conexión con Google Calendar.", retryable: false };
+      default:
+        return { msg: "No se pudo completar la acción con Google Calendar.", retryable: false };
+    }
+  }
+
+  function sampleErrorInfo(err) {
+    var code = err && err.code;
+    switch (code) {
+      case "not_granted":
+      case "sampling_disabled":
+      case "not_declared":
+      case "capability_disabled":
+      case "capability_removed":
+        return { msg: "La lectura con IA no está habilitada en esta vista.", hide: true };
+      case "prompt_too_large":
+        return { msg: "El documento es muy largo para analizarlo entero. Probá con un archivo más corto o un extracto.", retry: true };
+      case "rate_limited":
+        return { msg: "Hay muchas solicitudes en este momento. Probá de nuevo en un rato.", retry: true };
+      case "session_expired":
+        return { msg: "Tu sesión de Claude venció, recargá la página.", retry: false };
+      case "invalid_json":
+        return { msg: "No se pudo interpretar la respuesta. Probá analizar de nuevo.", retry: true };
+      case "refused":
+        return { msg: "Claude no pudo procesar este documento.", retry: true };
+      case "empty_completion":
+        return { msg: "No se obtuvo respuesta. Probá con un documento más corto.", retry: true };
+      case "cancelled":
+        return { msg: "Se canceló el análisis.", retry: true };
+      default:
+        return { msg: "No se pudo analizar el documento (" + (err && err.message ? err.message : "error desconocido") + ").", retry: true };
+    }
+  }
+
+  // ---------- rendering ----------
+
+  function render() {
+    renderQueue();
+  }
+
+  function renderQueue() {
+    var list = document.getElementById("queueList");
+    var count = document.getElementById("queueCount");
+    count.textContent = state.queue.length + (state.queue.length === 1 ? " entrada" : " entradas");
+
+    if (!state.queue.length) {
+      list.innerHTML = '<p class="empty">La cola está vacía. Agregá algo desde el formulario.</p>';
+      return;
+    }
+
+    list.innerHTML = "";
+    state.queue.forEach(function (item) {
+      var row = document.createElement("div");
+      row.className = "item";
+      row.setAttribute("data-type", item.type);
+
+      var when = document.createElement("div");
+      when.className = "when";
+      when.innerHTML = '<div class="date">' + formatDateLabel(item.date) + '</div><div class="mono">' + item.startTime + '–' + item.endTime + '</div>';
+      row.appendChild(when);
+
+      var body = document.createElement("div");
+      body.className = "body";
+
+      var line1 = document.createElement("div");
+      line1.className = "line1";
+      var titleEl = document.createElement("span");
+      titleEl.className = "title";
+      titleEl.textContent = item.title;
+      line1.appendChild(titleEl);
+      var chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = TYPE_LABEL[item.type];
+      line1.appendChild(chip);
+      if (item.isExample) {
+        var exChip = document.createElement("span");
+        exChip.className = "chip";
+        exChip.textContent = "ejemplo";
+        line1.appendChild(exChip);
+      }
+      body.appendChild(line1);
+
+      if (item.description) {
+        var desc = document.createElement("div");
+        desc.className = "desc";
+        desc.textContent = item.description;
+        body.appendChild(desc);
+      }
+
+      var meta = document.createElement("div");
+      meta.className = "meta";
+      var calSpan = document.createElement("span");
+      calSpan.textContent = item.calendarLabel || "Calendario principal";
+      meta.appendChild(calSpan);
+      if (item.reminderMinutes !== null && item.reminderMinutes !== undefined) {
+        var remSpan = document.createElement("span");
+        remSpan.textContent = "Aviso " + item.reminderMinutes + " min antes";
+        meta.appendChild(remSpan);
+      }
+      body.appendChild(meta);
+
+      if (item.status === "synced") {
+        var note = document.createElement("div");
+        note.className = "state-note synced";
+        note.innerHTML = "Sincronizado — " + (item.htmlLink ? '<a href="' + item.htmlLink + '" target="_blank" rel="noopener">ver en Calendar</a>' : "listo");
+        body.appendChild(note);
+      } else if (item.status === "error") {
+        var errNote = document.createElement("div");
+        errNote.className = "state-note error";
+        errNote.textContent = item.errorMsg || "No se pudo enviar.";
+        body.appendChild(errNote);
+      }
+
+      row.appendChild(body);
+
+      var actions = document.createElement("div");
+      actions.className = "actions";
+
+      if (item.status === "synced") {
+        var delBtn = document.createElement("button");
+        delBtn.className = "btn-sm danger";
+        delBtn.textContent = "Eliminar de Calendar";
+        delBtn.addEventListener("click", function () { removeFromCalendar(item.id); });
+        actions.appendChild(delBtn);
+      } else {
+        var sendBtn = document.createElement("button");
+        sendBtn.className = "btn-sm send";
+        sendBtn.textContent = item.status === "syncing" ? "Enviando…" : (item.status === "error" && item.errorRetryable ? "Reintentar" : "Enviar");
+        sendBtn.disabled = item.status === "syncing";
+        sendBtn.addEventListener("click", function () { syncItem(item.id); });
+        actions.appendChild(sendBtn);
+
+        var rmBtn = document.createElement("button");
+        rmBtn.className = "btn-sm";
+        rmBtn.textContent = "Quitar";
+        rmBtn.disabled = item.status === "syncing";
+        rmBtn.addEventListener("click", function () { removeDraft(item.id); });
+        actions.appendChild(rmBtn);
+      }
+
+      row.appendChild(actions);
+      list.appendChild(row);
+    });
+  }
+
+  function renderCalendarOptions() {
+    var select = document.getElementById("fCalendar");
+    select.innerHTML = "";
+    var primaryOpt = document.createElement("option");
+    primaryOpt.value = "";
+    primaryOpt.textContent = "Calendario principal";
+    select.appendChild(primaryOpt);
+    state.calendars.forEach(function (cal) {
+      var opt = document.createElement("option");
+      opt.value = cal.id;
+      opt.textContent = cal.summary || cal.id;
+      select.appendChild(opt);
+    });
+  }
+
+  function calendarLabelFor(calendarId) {
+    if (!calendarId) return "Calendario principal";
+    var found = state.calendars.filter(function (c) { return c.id === calendarId; })[0];
+    return found ? found.summary : calendarId;
+  }
+
+  function setConn(status, label) {
+    var pill = document.getElementById("connPill");
+    pill.className = "conn-pill " + status;
+    document.getElementById("connLabel").textContent = label;
+  }
+
+  // ---------- queue actions ----------
+
+  function removeDraft(id) {
+    state.queue = state.queue.filter(function (it) { return it.id !== id; });
+    persistQueue();
+    render();
+  }
+
+  function findItem(id) {
+    return state.queue.filter(function (it) { return it.id === id; })[0];
+  }
+
+  function syncItem(id) {
+    var item = findItem(id);
+    if (!item) return;
+    if (!mcp) {
+      item.status = "error";
+      item.errorMsg = "La conexión con Google Calendar no está disponible en esta vista.";
+      item.errorRetryable = false;
+      render();
+      return;
+    }
+    item.status = "syncing";
+    render();
+
+    var input = {
+      summary: item.title,
+      startTime: item.date + "T" + item.startTime + ":00",
+      endTime: item.date + "T" + item.endTime + ":00",
+      timeZone: TIME_ZONE,
+      notificationLevel: "NONE"
+    };
+    if (item.calendarId) input.calendarId = item.calendarId;
+    if (item.description) input.description = item.description;
+    if (item.reminderMinutes !== null && item.reminderMinutes !== undefined) {
+      input.overrideReminders = [{ method: "popup", minutes: item.reminderMinutes }];
+    }
+
+    mcp.callTool(SERVER, "create_event", input, { cache: false }).then(function (result) {
+      var ev = result.payload || {};
+      item.status = "synced";
+      item.eventId = ev.id;
+      item.htmlLink = ev.htmlLink;
+      item.calendarUsed = item.calendarId || "primary";
+      persistQueue();
+      render();
+    }).catch(function (err) {
+      var info = mcpErrorInfo(err);
+      item.status = "error";
+      item.errorMsg = info.msg;
+      item.errorRetryable = info.retryable;
+      persistQueue();
+      render();
+    });
+  }
+
+  function removeFromCalendar(id) {
+    var item = findItem(id);
+    if (!item || !item.eventId || !mcp) return;
+    var input = { eventId: item.eventId, notificationLevel: "NONE" };
+    if (item.calendarId) input.calendarId = item.calendarId;
+    mcp.callTool(SERVER, "delete_event", input, { cache: false }).then(function () {
+      state.queue = state.queue.filter(function (it) { return it.id !== id; });
+      persistQueue();
+      render();
+    }).catch(function (err) {
+      var info = mcpErrorInfo(err);
+      item.errorMsg = "No se pudo eliminar: " + info.msg;
+      render();
+    });
+  }
+
+  // ---------- composer ----------
+
+  function setType(type) {
+    state.type = type;
+    document.querySelectorAll(".type-toggle button").forEach(function (btn) {
+      btn.setAttribute("data-active", btn.getAttribute("data-type") === type ? "true" : "false");
+    });
+    document.getElementById("typeHint").textContent = TYPE_HINT[type];
+
+    var startInput = document.getElementById("fStart");
+    var reminderInput = document.getElementById("fReminder");
+    var duration = DEFAULT_DURATION_MIN[type];
+    if (startInput.value) {
+      document.getElementById("fEnd").value = addMinutesToTime(startInput.value, duration);
+    }
+    var defReminder = DEFAULT_REMINDER_MIN[type];
+    reminderInput.value = defReminder === null ? "" : defReminder;
+    reminderInput.placeholder = defReminder === null ? "Usar el del calendario" : "";
+  }
+
+  function initComposerDefaults() {
+    document.getElementById("fDate").value = todayDateValue();
+    var m = nowInMontevideo();
+    var roundedMin = Math.ceil(parseInt(m.minute, 10) / 15) * 15;
+    var startHour = parseInt(m.hour, 10) + Math.floor(roundedMin / 60);
+    var startMin = roundedMin % 60;
+    var startVal = pad(startHour % 24) + ":" + pad(startMin);
+    document.getElementById("fStart").value = startVal;
+    document.getElementById("fEnd").value = addMinutesToTime(startVal, DEFAULT_DURATION_MIN[state.type]);
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    var calSelect = document.getElementById("fCalendar");
+    var reminderVal = document.getElementById("fReminder").value;
+    var item = {
+      id: "it_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+      type: state.type,
+      title: document.getElementById("fTitle").value.trim(),
+      date: document.getElementById("fDate").value,
+      startTime: document.getElementById("fStart").value,
+      endTime: document.getElementById("fEnd").value,
+      calendarId: calSelect.value,
+      calendarLabel: calendarLabelFor(calSelect.value),
+      description: document.getElementById("fDesc").value.trim(),
+      reminderMinutes: reminderVal === "" ? null : parseInt(reminderVal, 10),
+      status: "draft"
+    };
+    if (!item.title) return;
+    state.queue.unshift(item);
+    persistQueue();
+    render();
+
+    document.getElementById("fTitle").value = "";
+    document.getElementById("fDesc").value = "";
+    initComposerDefaults();
+    setType(state.type);
+    document.getElementById("fTitle").focus();
+  }
+
+  // ---------- upcoming events ----------
+
+  function renderUpcoming(events) {
+    var el = document.getElementById("upcomingList");
+    if (!events || !events.length) {
+      el.innerHTML = '<p class="upc-note">Sin eventos próximos en el calendario principal.</p>';
+      return;
+    }
+    el.innerHTML = "";
+    events.slice(0, 6).forEach(function (ev) {
+      var row = document.createElement("div");
+      row.className = "upc-item";
+      var startStr = "";
+      if (ev.start) {
+        if (ev.start.dateTime) {
+          var d = new Date(ev.start.dateTime);
+          startStr = new Intl.DateTimeFormat("es-UY", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: TIME_ZONE }).format(d);
+        } else if (ev.start.date) {
+          startStr = formatDateLabel(ev.start.date) + " (todo el día)";
+        }
+      }
+      row.innerHTML = '<div class="t mono">' + startStr + '</div><div class="s">' + (ev.summary || "(sin título)") + '</div>';
+      el.appendChild(row);
+    });
+  }
+
+  function loadUpcoming() {
+    if (!mcp) return;
+    var el = document.getElementById("upcomingList");
+    el.innerHTML = '<p class="upc-note">Cargando…</p>';
+    mcp.callTool(SERVER, "list_events", {
+      pageSize: 6,
+      orderBy: "startTime",
+      startTime: new Date().toISOString(),
+      timeZone: TIME_ZONE
+    }, { cache: { staleTime: 60000 } }).then(function (result) {
+      var payload = result.payload || {};
+      renderUpcoming(payload.events);
+    }).catch(function (err) {
+      var info = mcpErrorInfo(err);
+      el.innerHTML = '<p class="upc-note">' + info.msg + '</p>';
+    });
+  }
+
+  function loadCalendars() {
+    if (!mcp) return;
+    mcp.callTool(SERVER, "list_calendars", {}, { cache: { staleTime: 60000 } }).then(function (result) {
+      var payload = result.payload || {};
+      state.calendars = payload.calendars || [];
+      state.calendarsLoaded = true;
+      renderCalendarOptions();
+      setConn("ok", "Google Calendar conectado");
+    }).catch(function (err) {
+      var info = mcpErrorInfo(err);
+      setConn("bad", info.msg);
+      var select = document.getElementById("fCalendar");
+      select.innerHTML = '<option value="">Calendario principal</option>';
+    });
+  }
+
+  // ---------- document import ----------
+
+  function setImportStatus(text, isError) {
+    var el = document.getElementById("importStatus");
+    el.textContent = text || "";
+    el.className = "import-status" + (isError ? " error" : "");
+  }
+
+  function extractPdfText(file) {
+    if (typeof pdfjsLib === "undefined") {
+      return Promise.reject(new Error("No se pudo cargar el lector de PDF."));
+    }
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    return file.arrayBuffer().then(function (buf) {
+      return pdfjsLib.getDocument({ data: buf }).promise;
+    }).then(function (doc) {
+      var textParts = [];
+      var pageNum = 1;
+      function nextPage() {
+        if (pageNum > doc.numPages) return Promise.resolve();
+        return doc.getPage(pageNum).then(function (page) {
+          return page.getTextContent();
+        }).then(function (content) {
+          textParts.push(content.items.map(function (it) { return it.str; }).join(" "));
+          pageNum++;
+          var joined = textParts.join("\n");
+          if (joined.length > MAX_DOC_CHARS) return Promise.resolve();
+          return nextPage();
+        });
+      }
+      return nextPage().then(function () { return textParts.join("\n"); });
+    });
+  }
+
+  function extractDocxText(file) {
+    if (typeof mammoth === "undefined") {
+      return Promise.reject(new Error("No se pudo cargar el lector de Word."));
+    }
+    return file.arrayBuffer().then(function (buf) {
+      return mammoth.extractRawText({ arrayBuffer: buf });
+    }).then(function (result) { return result.value; });
+  }
+
+  function handleFileChange(e) {
+    var file = e.target.files && e.target.files[0];
+    selectedFile = file || null;
+    document.getElementById("fileBtnLabel").textContent = file ? file.name : "Elegir archivo (.pdf, .docx)";
+    document.getElementById("analyzeBtn").disabled = !file || !sample;
+    setImportStatus("");
+  }
+
+  function analyzeDocument() {
+    if (!selectedFile || !sample) return;
+    var name = selectedFile.name.toLowerCase();
+    var extractPromise;
+    if (name.endsWith(".pdf")) {
+      extractPromise = extractPdfText(selectedFile);
+    } else if (name.endsWith(".docx")) {
+      extractPromise = extractDocxText(selectedFile);
+    } else {
+      setImportStatus("Los archivos .doc antiguos no se pueden leer acá. Convertí a .docx o PDF e intentá de nuevo.", true);
+      return;
+    }
+
+    document.getElementById("analyzeBtn").disabled = true;
+    setImportStatus("Extrayendo texto del documento…");
+
+    extractPromise.then(function (text) {
+      text = (text || "").trim();
+      if (!text) {
+        setImportStatus("No se encontró texto en el documento (¿es un PDF escaneado como imagen?).", true);
+        document.getElementById("analyzeBtn").disabled = false;
+        return null;
+      }
+      var truncated = text.length > MAX_DOC_CHARS;
+      if (truncated) text = text.slice(0, MAX_DOC_CHARS);
+
+      setImportStatus("Analizando fechas con Claude…" + (truncated ? " (se usaron los primeros " + MAX_DOC_CHARS.toLocaleString("es-UY") + " caracteres)" : ""));
+
+      var today = todayDateValue();
+      var prompt = "Sos un asistente que lee documentos académicos en español de Uruguay (por ejemplo convocatorias del CERP o cronogramas de la UTEC) y extrae únicamente las fechas concretas en las que una persona debe participar de un examen, una mesa de examen (tribunal), una entrega o una instancia similar.\n" +
+        "Hoy es " + today + " (zona horaria America/Montevideo).\n\n" +
+        "Devolvé EXCLUSIVAMENTE un array JSON, sin texto antes ni después, con este formato exacto:\n" +
+        '[{"title": string breve, "date": "YYYY-MM-DD", "startTime": "HH:mm" o null, "endTime": "HH:mm" o null, "location": string o null, "description": string breve con contexto (unidad curricular, tribunal, plan, etc.) o null}]\n\n' +
+        "Reglas:\n" +
+        "- Convertí las fechas al formato YYYY-MM-DD (el documento puede usar DD/MM/AAAA).\n" +
+        "- Si hay hora de inicio pero no de fin, calculá el fin sumando 1 hora salvo que el texto indique otra duración.\n" +
+        "- Ignorá fechas que no requieran la presencia de la persona (por ejemplo publicación de resultados o plazos administrativos generales).\n" +
+        "- Si no encontrás ninguna fecha de este tipo, devolvé [].\n\n" +
+        "Texto extraído del documento:\n\n" + text;
+
+      return sample.json(prompt).then(function (data) {
+        var list = Array.isArray(data) ? data : [];
+        candidates = list.filter(function (d) { return d && d.date; }).map(function (d, i) {
+          return {
+            id: "cand_" + Date.now() + "_" + i,
+            title: String(d.title || "Sin título"),
+            date: String(d.date),
+            startTime: d.startTime ? String(d.startTime) : "",
+            endTime: d.endTime ? String(d.endTime) : "",
+            location: d.location ? String(d.location) : "",
+            description: d.description ? String(d.description) : ""
+          };
+        });
+        renderCandidates();
+        setImportStatus(candidates.length
+          ? "Se encontraron " + candidates.length + " fecha(s). Revisá y agregá a la cola."
+          : "No se encontraron fechas de participación en este documento.");
+      });
+    }).catch(function (err) {
+      var info = err && err.code ? sampleErrorInfo(err) : { msg: "No se pudo leer el documento: " + (err && err.message ? err.message : err) };
+      setImportStatus(info.msg, true);
+    }).finally(function () {
+      document.getElementById("analyzeBtn").disabled = !selectedFile || !sample;
+    });
+  }
+
+  function renderCandidates() {
+    var wrap = document.getElementById("importResults");
+    if (!candidates.length) { wrap.innerHTML = ""; return; }
+
+    wrap.innerHTML = "";
+
+    var topBar = document.createElement("div");
+    topBar.className = "import-actions-top";
+    var label = document.createElement("span");
+    label.className = "sub";
+    label.style.margin = "0";
+    label.textContent = candidates.length + " fecha(s) encontradas";
+    topBar.appendChild(label);
+    var addAllBtn = document.createElement("button");
+    addAllBtn.type = "button";
+    addAllBtn.className = "refresh-link";
+    addAllBtn.textContent = "Agregar todas a la cola";
+    addAllBtn.addEventListener("click", function () {
+      candidates.slice().forEach(function (c) { addCandidateToQueue(c.id, true); });
+    });
+    topBar.appendChild(addAllBtn);
+    wrap.appendChild(topBar);
+
+    candidates.forEach(function (c) {
+      var row = document.createElement("div");
+      row.className = "candidate";
+
+      var dateInput = mkInput("date", c.date, function (v) { c.date = v; });
+      var titleInput = mkInput("text", c.title, function (v) { c.title = v; });
+      var startInput = mkInput("time", c.startTime, function (v) { c.startTime = v; });
+      var endInput = mkInput("time", c.endTime, function (v) { c.endTime = v; });
+      var descInput = mkInput("text", c.description, function (v) { c.description = v; }, "Descripción");
+
+      row.appendChild(dateInput);
+      row.appendChild(titleInput);
+      row.appendChild(startInput);
+      row.appendChild(endInput);
+      row.appendChild(descInput);
+
+      var addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.className = "btn-sm send";
+      addBtn.textContent = "Agregar";
+      addBtn.addEventListener("click", function () { addCandidateToQueue(c.id, false); });
+      row.appendChild(addBtn);
+
+      var discardBtn = document.createElement("button");
+      discardBtn.type = "button";
+      discardBtn.className = "btn-sm";
+      discardBtn.textContent = "Descartar";
+      discardBtn.addEventListener("click", function () {
+        candidates = candidates.filter(function (x) { return x.id !== c.id; });
+        renderCandidates();
+      });
+      row.appendChild(discardBtn);
+
+      wrap.appendChild(row);
+    });
+  }
+
+  function mkInput(type, value, onChange, placeholder) {
+    var input = document.createElement("input");
+    input.type = type;
+    input.value = value || "";
+    if (placeholder) input.placeholder = placeholder;
+    input.addEventListener("input", function () { onChange(input.value); });
+    return input;
+  }
+
+  function addCandidateToQueue(candidateId, silent) {
+    var c = candidates.filter(function (x) { return x.id === candidateId; })[0];
+    if (!c || !c.date) return;
+    var hasTime = !!c.startTime;
+    var item = {
+      id: "it_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+      type: "evento",
+      title: c.title || "Sin título",
+      date: c.date,
+      startTime: c.startTime || "09:00",
+      endTime: c.endTime || addMinutesToTime(c.startTime || "09:00", 60),
+      calendarId: "",
+      calendarLabel: "Calendario principal",
+      description: [c.location ? "Lugar: " + c.location : "", c.description || ""].filter(Boolean).join(" — "),
+      reminderMinutes: DEFAULT_REMINDER_MIN.evento,
+      status: "draft"
+    };
+    if (!hasTime) item.description = ("Sin hora exacta en el documento. " + item.description).trim();
+    state.queue.unshift(item);
+    persistQueue();
+    render();
+    candidates = candidates.filter(function (x) { return x.id !== candidateId; });
+    if (!silent) renderCandidates();
+  }
+
+  // ---------- clock ----------
+
+  function tickClock() {
+    var m = nowInMontevideo();
+    document.getElementById("clockTime").textContent = m.hour + ":" + m.minute;
+  }
+
+  // ---------- init ----------
+
+  function wireStaticUI() {
+    document.querySelectorAll(".type-toggle button").forEach(function (btn) {
+      btn.addEventListener("click", function () { setType(btn.getAttribute("data-type")); });
+    });
+    document.getElementById("composerForm").addEventListener("submit", handleSubmit);
+    document.getElementById("refreshUpcoming").addEventListener("click", function () {
+      loadCalendars();
+      loadUpcoming();
+    });
+    document.getElementById("fStart").addEventListener("change", function () {
+      document.getElementById("fEnd").value = addMinutesToTime(this.value, DEFAULT_DURATION_MIN[state.type]);
+    });
+    document.getElementById("fileInput").addEventListener("change", handleFileChange);
+    document.getElementById("analyzeBtn").addEventListener("click", analyzeDocument);
+  }
+
+  function boot() {
+    wireStaticUI();
+    initComposerDefaults();
+    setType(state.type);
+    render();
+    tickClock();
+    setInterval(tickClock, 30000);
+
+    if (!window.claude || !window.claude.use) {
+      setConn("bad", "Sin conexión con Claude");
+      document.getElementById("fCalendar").innerHTML = '<option value="">Calendario principal</option>';
+      document.getElementById("upcomingList").innerHTML = '<p class="upc-note">No disponible fuera de Claude.</p>';
+      setImportStatus("La importación de documentos no está disponible fuera de Claude.", true);
+      return;
+    }
+
+    window.claude.use("mcp").then(function (ns) {
+      if (!ns) {
+        setConn("bad", "Conector no disponible en esta vista");
+        document.getElementById("fCalendar").innerHTML = '<option value="">Calendario principal</option>';
+        document.getElementById("upcomingList").innerHTML = '<p class="upc-note">Conectá Google Calendar en Ajustes de Claude → Conectores.</p>';
+        return;
+      }
+      mcp = ns;
+      loadCalendars();
+      loadUpcoming();
+    }).catch(function () {
+      setConn("bad", "No se pudo iniciar el conector");
+    });
+
+    window.claude.use("sample").then(function (ns) {
+      if (!ns) {
+        setImportStatus("La lectura de documentos con IA no está disponible en esta vista.", true);
+        document.getElementById("analyzeBtn").disabled = true;
+        return;
+      }
+      sample = ns;
+      document.getElementById("analyzeBtn").disabled = !selectedFile;
+    }).catch(function () {
+      setImportStatus("No se pudo iniciar la lectura de documentos.", true);
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+})();
+</script>
