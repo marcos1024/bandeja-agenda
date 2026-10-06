@@ -221,13 +221,20 @@
   .import-actions-top .refresh-link { font-weight: 500; }
   .candidate {
     display: grid;
-    grid-template-columns: 128px 1.4fr 96px 96px 1fr auto auto;
+    grid-template-columns: 128px 108px 1.4fr 96px 96px 1fr auto auto;
     gap: 8px; align-items: center;
     padding: 8px 6px; border-radius: 8px; background: var(--surface-2);
   }
-  .candidate input { font: inherit; font-size: 0.82rem; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; }
+  .candidate input, .candidate select { font: inherit; font-size: 0.82rem; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; }
   @media (max-width: 900px) {
     .candidate { grid-template-columns: 1fr 1fr; }
+  }
+  .import-debug { margin-top: 10px; font-size: 0.8rem; color: var(--ink-muted); }
+  .import-debug summary { cursor: pointer; }
+  .import-debug pre {
+    margin: 8px 0 0; padding: 10px; max-height: 220px; overflow: auto;
+    background: var(--surface-2); border-radius: 8px; white-space: pre-wrap; word-break: break-word;
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.74rem; color: var(--ink);
   }
 </style>
 
@@ -258,6 +265,10 @@
     </div>
     <p class="import-status" id="importStatus"></p>
     <div class="import-results" id="importResults"></div>
+    <details class="import-debug" id="importDebug" hidden>
+      <summary id="importDebugSummary">Ver texto leído del documento</summary>
+      <pre id="importDebugText"></pre>
+    </details>
   </section>
 
   <div class="layout">
@@ -380,8 +391,22 @@
   function addMinutesToTime(hhmm, minutes) {
     var bits = hhmm.split(":");
     var total = parseInt(bits[0], 10) * 60 + parseInt(bits[1], 10) + minutes;
-    total = ((total % 1440) + 1440) % 1440;
+    total = Math.max(0, Math.min(1439, total));
     return pad(Math.floor(total / 60)) + ":" + pad(total % 60);
+  }
+
+  function normalizeDate(value) {
+    var s = String(value || "").trim();
+    var iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return iso[1] + "-" + iso[2] + "-" + iso[3];
+    var dmy = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (dmy) return dmy[3] + "-" + pad(parseInt(dmy[2], 10)) + "-" + pad(parseInt(dmy[1], 10));
+    return "";
+  }
+
+  function normalizeTime(value) {
+    var m = String(value || "").match(/(\d{1,2}):(\d{2})/);
+    return m ? pad(parseInt(m[1], 10)) + ":" + m[2] : "";
   }
 
   function formatDateLabel(dateStr) {
@@ -638,6 +663,13 @@
       render();
       return;
     }
+    if (item.endTime <= item.startTime) {
+      item.status = "error";
+      item.errorMsg = "La hora de fin tiene que ser posterior a la de inicio. Quitá la entrada y cargala de nuevo con el horario corregido.";
+      item.errorRetryable = false;
+      render();
+      return;
+    }
     item.status = "syncing";
     render();
 
@@ -721,6 +753,13 @@
 
   function handleSubmit(e) {
     e.preventDefault();
+    var endField = document.getElementById("fEnd");
+    if (endField.value <= document.getElementById("fStart").value) {
+      endField.setCustomValidity("La hora de fin tiene que ser posterior a la de inicio.");
+      endField.reportValidity();
+      return;
+    }
+    endField.setCustomValidity("");
     var calSelect = document.getElementById("fCalendar");
     var reminderVal = document.getElementById("fReminder").value;
     var item = {
@@ -859,6 +898,57 @@
     setImportStatus("");
   }
 
+  var CANDIDATE_TYPES = ["evento", "tarea", "recordatorio"];
+
+  function buildImportPrompt(text) {
+    return "Sos un asistente que lee documentos académicos en español de Uruguay (convocatorias a mesas de examen del CERP, cronogramas de la UTEC, calendarios de entregas de un curso, etc.) y extrae TODAS las fechas en las que la persona tiene un compromiso concreto: exámenes, pruebas o tests, mesas de examen (tribunal), entregas o vencimientos de tareas y trabajos, defensas, reuniones y cierres de curso.\n" +
+      "Hoy es " + todayDateValue() + " (zona horaria America/Montevideo).\n\n" +
+      "Devolvé EXCLUSIVAMENTE un array JSON, sin texto antes ni después, con este formato exacto:\n" +
+      '[{"title": string breve, "date": "YYYY-MM-DD", "startTime": "HH:mm" o null, "endTime": "HH:mm" o null, "location": string o null, "description": string breve con contexto o null, "type": "evento" | "tarea" | "recordatorio"}]\n\n' +
+      "Reglas:\n" +
+      "- Un elemento por cada fecha con compromiso. Si una misma fila reúne varias actividades en esa fecha (por ejemplo una tarea y un test), ponelas juntas en un solo elemento y nombralas todas en title.\n" +
+      "- Si la tabla tiene una columna de liberación, publicación o apertura y otra de entrega, vencimiento o cierre, usá la fecha de entrega o vencimiento. No crees elementos por la fecha de liberación.\n" +
+      '- type: "evento" para exámenes, pruebas, tests, mesas, defensas, reuniones y filas que combinen entrega y test; "tarea" para entregas y vencimientos de trabajos; "recordatorio" para cierres de curso y avisos sin duración.\n' +
+      "- Convertí las fechas a YYYY-MM-DD (el documento puede usar DD/MM/AAAA, con o sin día de la semana). Si falta el año, usá el que figure en el documento y, si no, el de hoy.\n" +
+      "- Si el documento indica una hora límite (por ejemplo 23:59), usala como endTime y poné startTime 30 minutos antes, en el mismo día. Si hay hora de inicio pero no de fin, sumá 1 hora sin pasar de 23:59. Si no hay ninguna hora, poné null en ambas.\n" +
+      "- Ante la duda, incluí la fecha: la persona revisa cada elemento antes de agregarlo. Devolvé [] solo si el texto no contiene ninguna fecha.\n\n" +
+      "Texto extraído del documento:\n\n" + text;
+  }
+
+  function toCandidateList(data) {
+    if (Array.isArray(data)) return data;
+    if (data && typeof data === "object") {
+      var keys = Object.keys(data);
+      for (var i = 0; i < keys.length; i++) {
+        if (Array.isArray(data[keys[i]])) return data[keys[i]];
+      }
+    }
+    return [];
+  }
+
+  function toCandidate(d, i) {
+    if (!d || typeof d !== "object") return null;
+    var date = normalizeDate(d.date || d.fecha);
+    if (!date) return null;
+    var type = String(d.type || d.tipo || "").toLowerCase();
+    return {
+      id: "cand_" + Date.now() + "_" + i,
+      type: CANDIDATE_TYPES.indexOf(type) >= 0 ? type : "evento",
+      title: String(d.title || d.titulo || "Sin título"),
+      date: date,
+      startTime: normalizeTime(d.startTime),
+      endTime: normalizeTime(d.endTime),
+      location: d.location ? String(d.location) : "",
+      description: d.description ? String(d.description) : ""
+    };
+  }
+
+  function showExtractedText(text) {
+    document.getElementById("importDebugSummary").textContent = "Ver texto leído del documento (" + text.length.toLocaleString("es-UY") + " caracteres)";
+    document.getElementById("importDebugText").textContent = text.length > 4000 ? text.slice(0, 4000) + "\n…" : text;
+    document.getElementById("importDebug").hidden = false;
+  }
+
   function analyzeDocument() {
     if (!selectedFile || !sample) return;
     var name = selectedFile.name.toLowerCase();
@@ -873,49 +963,29 @@
     }
 
     document.getElementById("analyzeBtn").disabled = true;
+    document.getElementById("importDebug").hidden = true;
+    candidates = [];
+    renderCandidates();
     setImportStatus("Extrayendo texto del documento…");
 
     extractPromise.then(function (text) {
       text = (text || "").trim();
       if (!text) {
         setImportStatus("No se encontró texto en el documento (¿es un PDF escaneado como imagen?).", true);
-        document.getElementById("analyzeBtn").disabled = false;
         return null;
       }
       var truncated = text.length > MAX_DOC_CHARS;
       if (truncated) text = text.slice(0, MAX_DOC_CHARS);
+      showExtractedText(text);
 
       setImportStatus("Analizando fechas con Claude…" + (truncated ? " (se usaron los primeros " + MAX_DOC_CHARS.toLocaleString("es-UY") + " caracteres)" : ""));
 
-      var today = todayDateValue();
-      var prompt = "Sos un asistente que lee documentos académicos en español de Uruguay (por ejemplo convocatorias del CERP o cronogramas de la UTEC) y extrae únicamente las fechas concretas en las que una persona debe participar de un examen, una mesa de examen (tribunal), una entrega o una instancia similar.\n" +
-        "Hoy es " + today + " (zona horaria America/Montevideo).\n\n" +
-        "Devolvé EXCLUSIVAMENTE un array JSON, sin texto antes ni después, con este formato exacto:\n" +
-        '[{"title": string breve, "date": "YYYY-MM-DD", "startTime": "HH:mm" o null, "endTime": "HH:mm" o null, "location": string o null, "description": string breve con contexto (unidad curricular, tribunal, plan, etc.) o null}]\n\n' +
-        "Reglas:\n" +
-        "- Convertí las fechas al formato YYYY-MM-DD (el documento puede usar DD/MM/AAAA).\n" +
-        "- Si hay hora de inicio pero no de fin, calculá el fin sumando 1 hora salvo que el texto indique otra duración.\n" +
-        "- Ignorá fechas que no requieran la presencia de la persona (por ejemplo publicación de resultados o plazos administrativos generales).\n" +
-        "- Si no encontrás ninguna fecha de este tipo, devolvé [].\n\n" +
-        "Texto extraído del documento:\n\n" + text;
-
-      return sample.json(prompt).then(function (data) {
-        var list = Array.isArray(data) ? data : [];
-        candidates = list.filter(function (d) { return d && d.date; }).map(function (d, i) {
-          return {
-            id: "cand_" + Date.now() + "_" + i,
-            title: String(d.title || "Sin título"),
-            date: String(d.date),
-            startTime: d.startTime ? String(d.startTime) : "",
-            endTime: d.endTime ? String(d.endTime) : "",
-            location: d.location ? String(d.location) : "",
-            description: d.description ? String(d.description) : ""
-          };
-        });
+      return sample.json(buildImportPrompt(text), { cache: false }).then(function (data) {
+        candidates = toCandidateList(data).map(toCandidate).filter(Boolean);
         renderCandidates();
         setImportStatus(candidates.length
-          ? "Se encontraron " + candidates.length + " fecha(s). Revisá y agregá a la cola."
-          : "No se encontraron fechas de participación en este documento.");
+          ? "Se encontraron " + candidates.length + " fecha(s). Revisá el tipo y el horario antes de agregarlas a la cola."
+          : "Claude no encontró fechas en este documento (se leyeron " + text.length.toLocaleString("es-UY") + " caracteres). Abrí «Ver texto leído» para comprobar que el archivo se leyó bien.");
       });
     }).catch(function (err) {
       var info = err && err.code ? sampleErrorInfo(err) : { msg: "No se pudo leer el documento: " + (err && err.message ? err.message : err) };
@@ -943,7 +1013,10 @@
     addAllBtn.className = "refresh-link";
     addAllBtn.textContent = "Agregar todas a la cola";
     addAllBtn.addEventListener("click", function () {
-      candidates.slice().forEach(function (c) { addCandidateToQueue(c.id, true); });
+      var total = candidates.length;
+      candidates.slice().reverse().forEach(function (c) { addCandidateToQueue(c.id, true); });
+      renderCandidates();
+      setImportStatus(total + " fecha(s) agregadas a la cola. Revisalas y apretá Enviar en cada una.");
     });
     topBar.appendChild(addAllBtn);
     wrap.appendChild(topBar);
@@ -952,13 +1025,24 @@
       var row = document.createElement("div");
       row.className = "candidate";
 
-      var dateInput = mkInput("date", c.date, function (v) { c.date = v; });
-      var titleInput = mkInput("text", c.title, function (v) { c.title = v; });
-      var startInput = mkInput("time", c.startTime, function (v) { c.startTime = v; });
-      var endInput = mkInput("time", c.endTime, function (v) { c.endTime = v; });
-      var descInput = mkInput("text", c.description, function (v) { c.description = v; }, "Descripción");
+      var dateInput = mkInput("date", c.date, function (v) { c.date = v; }, "", "Fecha");
+      var typeSelect = document.createElement("select");
+      typeSelect.setAttribute("aria-label", "Tipo");
+      CANDIDATE_TYPES.forEach(function (t) {
+        var opt = document.createElement("option");
+        opt.value = t;
+        opt.textContent = TYPE_LABEL[t];
+        typeSelect.appendChild(opt);
+      });
+      typeSelect.value = c.type;
+      typeSelect.addEventListener("change", function () { c.type = typeSelect.value; });
+      var titleInput = mkInput("text", c.title, function (v) { c.title = v; }, "", "Título");
+      var startInput = mkInput("time", c.startTime, function (v) { c.startTime = v; }, "", "Hora inicio");
+      var endInput = mkInput("time", c.endTime, function (v) { c.endTime = v; }, "", "Hora fin");
+      var descInput = mkInput("text", c.description, function (v) { c.description = v; }, "Descripción", "Descripción");
 
       row.appendChild(dateInput);
+      row.appendChild(typeSelect);
       row.appendChild(titleInput);
       row.appendChild(startInput);
       row.appendChild(endInput);
@@ -985,11 +1069,12 @@
     });
   }
 
-  function mkInput(type, value, onChange, placeholder) {
+  function mkInput(type, value, onChange, placeholder, ariaLabel) {
     var input = document.createElement("input");
     input.type = type;
     input.value = value || "";
     if (placeholder) input.placeholder = placeholder;
+    if (ariaLabel) input.setAttribute("aria-label", ariaLabel);
     input.addEventListener("input", function () { onChange(input.value); });
     return input;
   }
@@ -997,18 +1082,33 @@
   function addCandidateToQueue(candidateId, silent) {
     var c = candidates.filter(function (x) { return x.id === candidateId; })[0];
     if (!c || !c.date) return;
-    var hasTime = !!c.startTime;
+    var type = c.type || "evento";
+    var startTime = c.startTime;
+    var endTime = c.endTime;
+    var hasTime = !!(startTime || endTime);
+    if (!startTime && !endTime) {
+      startTime = "09:00";
+      endTime = addMinutesToTime(startTime, DEFAULT_DURATION_MIN[type]);
+    } else if (!startTime) {
+      startTime = addMinutesToTime(endTime, -30);
+    } else if (!endTime) {
+      endTime = addMinutesToTime(startTime, DEFAULT_DURATION_MIN[type]);
+    }
+    if (endTime <= startTime) {
+      startTime = addMinutesToTime(endTime, -30);
+      if (endTime <= startTime) endTime = addMinutesToTime(startTime, 30);
+    }
     var item = {
       id: "it_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
-      type: "evento",
+      type: type,
       title: c.title || "Sin título",
       date: c.date,
-      startTime: c.startTime || "09:00",
-      endTime: c.endTime || addMinutesToTime(c.startTime || "09:00", 60),
+      startTime: startTime,
+      endTime: endTime,
       calendarId: "",
       calendarLabel: "Calendario principal",
       description: [c.location ? "Lugar: " + c.location : "", c.description || ""].filter(Boolean).join(" — "),
-      reminderMinutes: DEFAULT_REMINDER_MIN.evento,
+      reminderMinutes: DEFAULT_REMINDER_MIN[type],
       status: "draft"
     };
     if (!hasTime) item.description = ("Sin hora exacta en el documento. " + item.description).trim();
@@ -1040,6 +1140,7 @@
     document.getElementById("fStart").addEventListener("change", function () {
       document.getElementById("fEnd").value = addMinutesToTime(this.value, DEFAULT_DURATION_MIN[state.type]);
     });
+    document.getElementById("fEnd").addEventListener("input", function () { this.setCustomValidity(""); });
     document.getElementById("fileInput").addEventListener("change", handleFileChange);
     document.getElementById("analyzeBtn").addEventListener("click", analyzeDocument);
   }
